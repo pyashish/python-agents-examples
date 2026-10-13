@@ -1,0 +1,9 @@
+{
+  "trunk": {
+    "name": "My outbound trunk",
+    "address": "<my-trunk>.pstn.twilio.com",
+    "numbers": ["+15105550100"],
+    "auth_username": "<SIP_AUTH_USERNAME>",
+    "auth_password": "<SIP_AUTH_PASSWORD>"
+  }
+}

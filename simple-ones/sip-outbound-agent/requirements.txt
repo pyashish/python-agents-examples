@@ -1,0 +1,4 @@
+livekit-agents[silero]>=1.2.0
+livekit-plugins-noise-cancellation
+livekit-api
+python-dotenv
