@@ -13,9 +13,9 @@ A multimodal voice assistant with vision capabilities that can see and discuss w
 - **Automatic Frame Capture**: Buffers the latest video frame when users speak
 - **Multi-Track Support**: Handles video streams from remote participants
 - **Voice-Enabled**: Built using LiveKit's voice capabilities with support for:
-  - Speech-to-Text (STT) using Deepgram
-  - Large Language Model (LLM) using X.AI's Grok-2-Vision model
-  - Text-to-Speech (TTS) using Rime
+  - Speech-to-Text (STT) via LiveKit Inference (Deepgram Nova-3)
+  - Large Language Model (LLM) via LiveKit Inference (SpaceXAI Grok 4.3, multimodal)
+  - Text-to-Speech (TTS) via LiveKit Inference (Cartesia Sonic-3)
   - Voice Activity Detection (VAD) using Silero
 - **Modern Web Interface**: Next.js frontend with video sharing capabilities
 
@@ -26,7 +26,7 @@ A multimodal voice assistant with vision capabilities that can see and discuss w
 3. The agent subscribes to the user's video track automatically
 4. When the user speaks, the agent captures the current video frame
 5. The captured frame is added to the conversation context along with the transcribed speech
-6. Grok-2-Vision processes both the visual and textual input
+6. Grok processes both the visual and textual input via LiveKit Inference
 7. The agent responds with voice, able to describe and discuss what it sees
 8. Users can show different objects or scenes and ask questions about them
 
@@ -34,12 +34,8 @@ A multimodal voice assistant with vision capabilities that can see and discuss w
 
 - Python 3.10+
 - `livekit-agents`>=1.0
-- LiveKit account and credentials
-- API keys for:
-  - X.AI (for Grok-2-Vision model access)
-  - Deepgram (for speech-to-text)
-  - Rime (for text-to-speech)
-- Node.js and pnpm (for the frontend)
+- LiveKit account and credentials (Inference covers STT/LLM/TTS)
+- Node.js 24+ and pnpm (for the frontend)
 
 ## Installation
 
@@ -50,14 +46,12 @@ A multimodal voice assistant with vision capabilities that can see and discuss w
    pip install -r requirements.txt
    ```
 
-3. Create a `.env` file in the parent directory with your API credentials:
+3. Create a `.env` file at the repository root with your LiveKit credentials
+   (STT/LLM/TTS use [LiveKit Inference](https://docs.livekit.io/agents/models/inference/), so no separate provider keys are required):
    ```
    LIVEKIT_URL=your_livekit_url
    LIVEKIT_API_KEY=your_api_key
    LIVEKIT_API_SECRET=your_api_secret
-   XAI_API_KEY=your_xai_key
-   DEEPGRAM_API_KEY=your_deepgram_key
-   RIME_API_KEY=your_rime_key
    ```
 
 ## Running the Agent
@@ -67,14 +61,19 @@ A multimodal voice assistant with vision capabilities that can see and discuss w
    python agent.py dev
    ```
 
-2. In a separate terminal, navigate to the frontend directory and start the Next.js app:
+2. In a separate terminal, set up and start the Next.js frontend ([LiveKit agent-starter-react](https://github.com/livekit-examples/agent-starter-react)):
    ```bash
    cd agent-vision-frontend
+   cp .env.example .env.local
+   # Fill LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET in .env.local
+   # (same values as the agent .env)
    pnpm install
    pnpm dev
    ```
 
-The application will be available at `http://localhost:3000`. Enable your camera when prompted to start showing things to the agent.
+The application will be available at `http://localhost:3000`. Connect, then enable your camera in the control bar so the agent can see what you show it.
+
+> **Note:** This frontend was previously a broken git submodule with no source. It is now a clone of `agent-starter-react`, which supports camera and screen share.
 
 ## Architecture Details
 
@@ -91,7 +90,7 @@ The application will be available at `http://localhost:3000`. Enable your camera
 3. Latest frame is continuously buffered as video streams
 4. When user completes their turn (stops speaking), the current frame is captured
 5. Frame is added as ImageContent to the chat message
-6. Grok-2-Vision processes the multimodal input (text + image)
+6. Grok processes the multimodal input (text + image)
 7. Agent generates a response based on both visual and conversational context
 
 ### Frontend Features
@@ -112,7 +111,7 @@ The agent maintains conversation context that includes:
 
 ## Customization
 
-1. **Change Vision Model**: Replace Grok-2-Vision with other multimodal LLMs like GPT-4o or Claude 3
+1. **Change Vision Model**: Swap the `inference.LLM` model ID for another multimodal model (e.g. `openai/gpt-4.1`)
 2. **Modify Frame Capture Logic**: Adjust when frames are captured (e.g., continuous vs. on-demand)
 3. **Add Visual Analysis Tools**: Integrate specialized vision APIs for OCR, object detection, etc.
 4. **Enhance Agent Instructions**: Update the prompt to specialize in specific visual tasks

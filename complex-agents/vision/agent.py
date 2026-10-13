@@ -4,11 +4,11 @@ title: Vision-Enabled Agent
 category: complex-agents
 tags: [video_stream, grok_vision, x_ai, frame_capture, image_content]
 difficulty: intermediate
-description: Agent with camera vision capabilities using Grok-2 Vision model
+description: Agent with camera vision capabilities using Grok via LiveKit Inference
 demonstrates:
   - Video stream processing from remote participants
   - Frame buffering from video tracks
-  - X.AI Grok-2 Vision model integration
+  - SpaceXAI Grok vision via LiveKit Inference
   - Dynamic video track subscription
   - Image content injection into chat context
   - Track publication event handling
@@ -20,15 +20,22 @@ import logging
 from pathlib import Path
 from dotenv import load_dotenv
 from livekit import rtc
-from livekit.agents import JobContext, WorkerOptions, cli, get_job_context
-from livekit.agents.llm import function_tool, ImageContent, ChatContext, ChatMessage
-from livekit.agents.voice import Agent, AgentSession, RunContext
-from livekit.plugins import deepgram, openai, silero, rime
+from livekit.agents import (
+    Agent,
+    AgentServer,
+    AgentSession,
+    JobContext,
+    cli,
+    get_job_context,
+    inference,
+)
+from livekit.agents.llm import ChatContext, ChatMessage, ImageContent
+from livekit.plugins import silero
 
 logger = logging.getLogger("vision-agent")
 logger.setLevel(logging.INFO)
 
-load_dotenv(dotenv_path=Path(__file__).parent.parent / '.env')
+load_dotenv(dotenv_path=Path(__file__).parent.parent.parent / '.env')
 
 class VisionAgent(Agent):
     def __init__(self) -> None:
@@ -41,10 +48,6 @@ class VisionAgent(Agent):
                 You can see what the user is showing you through their camera.
                 Don't use any unpronouncable characters.
             """,
-            stt=deepgram.STT(),
-            llm=openai.LLM.with_x_ai(model="grok-2-vision", tool_choice=None),
-            tts=rime.TTS(),
-            vad=silero.VAD.load()
         )
 
     async def on_enter(self):
@@ -91,13 +94,24 @@ class VisionAgent(Agent):
         task.add_done_callback(lambda t: self._tasks.remove(t))
         self._tasks.append(task)
 
+server = AgentServer()
+
+@server.rtc_session()
 async def entrypoint(ctx: JobContext):
-    session = AgentSession()
+    session = AgentSession(
+        # LiveKit Inference — only LIVEKIT_* credentials required (no Deepgram/Rime/xAI keys)
+        stt=inference.STT(model="deepgram/nova-3-general"),
+        llm=inference.LLM(model="xai/grok-4.3"),
+        tts=inference.TTS(model="inworld/eleven-monolingual-voice", voice="Priya"),
+   
+        vad=silero.VAD.load(),
+    )
 
     await session.start(
         agent=VisionAgent(),
         room=ctx.room
     )
+    await ctx.connect()
 
 if __name__ == "__main__":
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
+    cli.run_app(server)
