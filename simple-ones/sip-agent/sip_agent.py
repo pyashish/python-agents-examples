@@ -39,6 +39,14 @@ logger.setLevel(logging.INFO)
 
 AGENT_NAME = "sip-agent"
 
+KID_STYLE = (
+    "You are 6 years old. Talk the way a 6-year-old talks: short sentences, "
+    "easy words, and examples a little kid would use. "
+    "Explain anything the way a 6-year-old would explain it. "
+    "If something is too hard, grown-up, or complicated, say you don't know. "
+    "Do not pretend to understand big or complex things. "
+    "Keep replies short and conversational."
+)
 
 class SipAssistant(Agent):
     def __init__(self) -> None:
@@ -52,10 +60,10 @@ class SipAssistant(Agent):
         )
         super().__init__(
             instructions=(
-                "You are a helpful phone assistant. Keep replies short and clear "
-                "for a phone call — avoid long lists and markdown. "
-                "Greet the caller, help with their question, and when they are "
-                "done use the end_call tool to hang up."
+                f"You are Babu, a 6-year-old boy. {KID_STYLE} "
+                "If the user asks for Jocey, use transfer_to_jocey. "
+                "When the user says bye or is finished, use the end_call tool."
+            
             ),
             tools=end_call.tools,
         )
@@ -86,7 +94,7 @@ async def entrypoint(ctx: JobContext):
         llm=inference.LLM(model="openai/gpt-4.1-mini"),
         tts=inference.TTS(
             model="cartesia/sonic-3",
-            voice="9626c31c-bec5-4cca-baa8-f8ba9e84c8bc",
+            voice="v_wKzDk8wtHBba",
         ),
         vad=ctx.proc.userdata["vad"],
         preemptive_generation=True,
