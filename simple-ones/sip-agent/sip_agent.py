@@ -4,9 +4,9 @@ Answers phone calls routed via a LiveKit dispatch rule. No special SIP
 dialing code is required for inbound — the SIP participant joins the room
 and this agent greets them.
 
-Run locally:
-    python sip_agent.py console
-    python sip_agent.py dev
+Run locally (from this directory):
+    lk agent console sip_agent.py
+    lk agent dev sip_agent.py
 
 Deploy:
     lk agent deploy   # from this directory (simple-ones/sip-agent/)
@@ -15,6 +15,7 @@ Point a LiveKit Phone Number dispatch rule at agent_name: sip-agent
 """
 
 import logging
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -25,28 +26,54 @@ from livekit.agents import (
     AgentSession,
     JobContext,
     JobProcess,
-    RoomInputOptions,
+    TurnHandlingOptions,
     cli,
     inference,
+    room_io,
 )
 from livekit.agents.beta.tools import EndCallTool
 from livekit.plugins import noise_cancellation, silero
 
-load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env")
+_AGENT_DIR = Path(__file__).resolve().parent
+load_dotenv(_AGENT_DIR.parents[1] / ".env")
+load_dotenv(_AGENT_DIR / ".env", override=True)
 
 logger = logging.getLogger("sip-agent")
 logger.setLevel(logging.INFO)
 
 AGENT_NAME = "sip-agent"
 
-KID_STYLE = (
-    "You are 6 years old. Talk the way a 6-year-old talks: short sentences, "
-    "easy words, and examples a little kid would use. "
-    "Explain anything the way a 6-year-old would explain it. "
-    "If something is too hard, grown-up, or complicated, say you don't know. "
-    "Do not pretend to understand big or complex things. "
-    "Keep replies short and conversational."
+
+def _required(name: str) -> str:
+    value = os.getenv(name, "").strip()
+    if not value:
+        raise RuntimeError(f"Set {name} in simple-ones/sip-agent/.env")
+    return value
+
+# Coughs and room noise: require 0.8s of speech and 2 real words before
+# yielding, and resume quickly if STT hears nothing.
+TURN_HANDLING = TurnHandlingOptions(
+    interruption={
+        "mode": "adaptive",
+        "min_duration": 0.8,
+        "min_words": 2,
+        "resume_false_interruption": True,
+        "false_interruption_timeout": 1.0,
+    },
+    preemptive_generation={"enabled": True},
 )
+
+def expressive_options() -> dict:
+    # Cartesia Sonic can vary emotion, pace, volume, and pauses. It does not
+    # produce laughs or sighs, so those sounds stay off.
+    return {
+        "speech_steering": {
+            "disfluencies": True,
+            "pace": "normal",
+        },
+        "tts_instructions_append": _required("TTS_DELIVERY"),
+    }
+
 
 class SipAssistant(Agent):
     def __init__(self) -> None:
@@ -60,10 +87,10 @@ class SipAssistant(Agent):
         )
         super().__init__(
             instructions=(
-                f"You are Babu, a 6-year-old boy. {KID_STYLE} "
+                f"{_required('AGENT_IDENTITY')} {_required('AGENT_PROFILE')} "
+                f"{_required('AGENT_STYLE')} "
                 "If the user asks for Jocey, use transfer_to_jocey. "
                 "When the user says bye or is finished, use the end_call tool."
-            
             ),
             tools=end_call.tools,
         )
@@ -93,19 +120,35 @@ async def entrypoint(ctx: JobContext):
         stt=inference.STT(model="deepgram/nova-3-general"),
         llm=inference.LLM(model="openai/gpt-4.1-mini"),
         tts=inference.TTS(
-            model="cartesia/sonic-3",
-            voice="v_wKzDk8wtHBba",
+            model=_required("TTS_MODEL"),
+            voice=_required("TTS_VOICE"),
         ),
         vad=ctx.proc.userdata["vad"],
-        preemptive_generation=True,
+        turn_handling=TURN_HANDLING,
+        expressive=expressive_options(),
     )
+
+    @session.on("agent_false_interruption")
+    def _on_false_interruption(ev) -> None:
+        logger.info("false interruption, resumed=%s", ev.resumed)
+
+    @session.on("overlapping_speech")
+    def _on_overlap(ev) -> None:
+        logger.info(
+            "overlap is_interruption=%s probability=%.2f duration=%.2fs",
+            ev.is_interruption,
+            ev.probability,
+            ev.total_duration,
+        )
 
     await session.start(
         agent=SipAssistant(),
         room=ctx.room,
-        room_input_options=RoomInputOptions(
-            # Telephony-tuned noise cancellation for phone callers
-            noise_cancellation=noise_cancellation.BVCTelephony(),
+        room_options=room_io.RoomOptions(
+            audio_input=room_io.AudioInputOptions(
+                # Telephony-tuned noise cancellation for phone callers
+                noise_cancellation=noise_cancellation.BVCTelephony(),
+            ),
         ),
     )
     await ctx.connect()

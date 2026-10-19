@@ -4,9 +4,9 @@ Unlike inbound sip-agent (which waits for a caller), this agent is dispatched
 with a phone number in job metadata, then dials that number via an outbound
 SIP trunk using CreateSIPParticipant.
 
-Run locally:
-    python sip_outbound_agent.py console
-    python sip_outbound_agent.py dev
+Run locally (from this directory):
+    lk agent console sip_outbound_agent.py
+    lk agent dev sip_outbound_agent.py
 
 Place a call (with the agent running in another terminal):
     python make_call.py +15551234567
@@ -34,9 +34,9 @@ from livekit.agents import (
     AgentSession,
     JobContext,
     JobProcess,
-    RoomInputOptions,
     cli,
     inference,
+    room_io,
 )
 from livekit.agents.beta.tools import EndCallTool
 from livekit.plugins import noise_cancellation, silero
@@ -138,8 +138,10 @@ async def entrypoint(ctx: JobContext):
     await session.start(
         agent=OutboundAssistant(),
         room=ctx.room,
-        room_input_options=RoomInputOptions(
-            noise_cancellation=noise_cancellation.BVCTelephony(),
+        room_options=room_io.RoomOptions(
+            audio_input=room_io.AudioInputOptions(
+                noise_cancellation=noise_cancellation.BVCTelephony(),
+            ),
         ),
     )
     await ctx.connect()
