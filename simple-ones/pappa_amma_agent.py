@@ -4,6 +4,7 @@ Run:
     python pappa_amma_agent.py console
 """
 
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -21,13 +22,24 @@ from livekit.agents import (
 from livekit.agents.beta.tools import EndCallTool
 from livekit.plugins import silero
 
-load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
+_ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(dotenv_path=_ENV_PATH)
 
-# Fish Audio voice IDs
-PAPPA_VOICE = "v_qboHnRFyFP5A"
-AMMA_VOICE = "v_gZLcvnAfh3SW"
 
-TTS_MODEL = "fishaudio/s2.1-pro"
+def _required(name: str) -> str:
+    value = os.getenv(name, "").strip().strip('"').strip("'")
+    if not value:
+        raise RuntimeError(f"Set {name} in {_ENV_PATH}")
+    return value
+
+
+# Fish Audio voice IDs and session models (see repo .env)
+PAPPA_VOICE = _required("PAPPA_VOICE")
+AMMA_VOICE = _required("AMMA_VOICE")
+TTS_MODEL = _required("TTS_MODEL")
+STT_MODEL = _required("STT_MODEL")
+LLM_MODEL = _required("LLM_MODEL")
+USER_AWAY_TIMEOUT = float(_required("USER_AWAY_TIMEOUT"))
 
 
 def _end_call_tool() -> EndCallTool:
@@ -111,13 +123,13 @@ server.setup_fnc = prewarm
 @server.rtc_session()
 async def entrypoint(ctx: JobContext):
     session = AgentSession(
-        stt=inference.STT(model="deepgram/nova-3-general"),
-        llm=inference.LLM(model="openai/gpt-4.1-mini"),
+        stt=inference.STT(model=STT_MODEL),
+        llm=inference.LLM(model=LLM_MODEL),
         # Fallback TTS; each agent sets its own voice via tts=
         tts=inference.TTS(model=TTS_MODEL, voice=AMMA_VOICE),
         vad=ctx.proc.userdata["vad"],
-        # After 10s of mutual silence, user state becomes "away"
-        user_away_timeout=10.0,
+        # After this many seconds of mutual silence, user state becomes "away"
+        user_away_timeout=USER_AWAY_TIMEOUT,
     )
 
     # Inactivity path: shut down when the user goes away (no speech for 10s)
