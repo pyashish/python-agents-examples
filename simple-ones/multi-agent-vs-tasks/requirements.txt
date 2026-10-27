@@ -1,0 +1,5 @@
+livekit-agents[silero]>=1.8.0
+livekit-plugins-noise-cancellation
+python-dotenv
+pytest
+pytest-asyncio
