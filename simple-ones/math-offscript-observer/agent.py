@@ -41,7 +41,8 @@ class TopicObserver:
         self._job_context = job_context
         self._off_topic_count = 0
         self._call_ended = False
-        self._turn_queue: asyncio.Queue[str] = asyncio.Queue()
+        self._conversation_history: list[tuple[str, str]] = []
+        self._turn_queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
         self._worker: asyncio.Task[None] | None = None
         self._setup_listener()
 
@@ -49,39 +50,50 @@ class TopicObserver:
         @self._session.on("conversation_item_added")
         def on_conversation_item_added(event: ConversationItemAddedEvent) -> None:
             # Handoffs and tool events can also be committed to the conversation.
-            if (
-                self._call_ended
-                or not isinstance(event.item, llm.ChatMessage)
-                or event.item.role != "user"
-            ):
+            if self._call_ended or not isinstance(event.item, llm.ChatMessage):
                 return
 
             text = event.item.text_content
             if not text or not text.strip():
                 return
 
-            self._turn_queue.put_nowait(text.strip())
+            if event.item.role not in ("user", "assistant"):
+                return
+
+            clean_text = text.strip()
+            self._conversation_history.append((event.item.role, clean_text))
+            if event.item.role != "user":
+                return
+
+            recent_history = self._conversation_history[-10:]
+            conversation_context = "\n".join(
+                f"{'LATEST USER TURN' if index == len(recent_history) - 1 else role}: {turn}"
+                for index, (role, turn) in enumerate(recent_history)
+            )
+            self._turn_queue.put_nowait((clean_text, conversation_context))
             if self._worker is None or self._worker.done():
                 self._worker = asyncio.create_task(self._process_turns())
 
     async def _process_turns(self) -> None:
         while not self._turn_queue.empty() and not self._call_ended:
-            text = await self._turn_queue.get()
+            text, conversation_context = await self._turn_queue.get()
             try:
-                await self._evaluate_turn(text)
+                await self._evaluate_turn(text, conversation_context)
             except Exception:
                 # A model or network failure must not count as a user violation.
                 logger.exception("[TOPIC OBSERVER] evaluation failed")
             finally:
                 self._turn_queue.task_done()
 
-    async def _evaluate_turn(self, text: str) -> None:
+    async def _evaluate_turn(self, text: str, conversation_context: str) -> None:
         response = await self._decision_model.evaluate(
-            input=text,
+            input=conversation_context,
             decisions={
                 "topic": llm.Choice(
                     prompt=(
-                        "Classify the latest user turn for a math-only assistant. "
+                        "Classify the LATEST USER TURN for a math-only assistant, using "
+                        "the preceding conversation to resolve references such as 'it', "
+                        "'that', or 'add another'. "
                         "Choose on_topic for a math question, a response that advances the "
                         "current math problem, or a brief greeting, thanks, goodbye, repeat, "
                         "or clarification request. Choose off_topic for any substantive "
@@ -91,7 +103,27 @@ class TopicObserver:
                         "on_topic": "Allowed math content or brief conversation control.",
                         "off_topic": "Substantive content unrelated to mathematics.",
                     },
-                )
+                ),
+                "off_topic_probability": llm.Probability(
+                    prompt=(
+                        "After resolving references from the preceding conversation, the "
+                        "LATEST USER TURN is a substantive request or discussion unrelated "
+                        "to mathematics. Brief greetings, thanks, goodbyes, repeat requests, "
+                        "clarification requests, and continuations of the current math "
+                        "problem do not count as off-topic."
+                    )
+                ),
+                "off_topic_severity": llm.Score(
+                    prompt=(
+                        "Using the preceding conversation for context, score how far the "
+                        "LATEST USER TURN departs from the math-only purpose."
+                    ),
+                    levels=[
+                        "Math-related or brief conversation control.",
+                        "Ambiguous, tangential, or only mildly unrelated to math.",
+                        "Clearly a substantive non-math request or discussion.",
+                    ],
+                ),
             },
         )
 
@@ -116,6 +148,7 @@ class TopicObserver:
             "input": {
                 "user_turn": text,
                 "decision": "topic",
+                "conversation_context": conversation_context,
             },
             "response": response.model_dump(mode="json"),
             "policy_state": {

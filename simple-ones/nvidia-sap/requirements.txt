@@ -1,0 +1,4 @@
+livekit-agents~=1.8.10
+livekit-plugins-nvidia~=1.8.10
+livekit-plugins-silero~=1.8.10
+python-dotenv

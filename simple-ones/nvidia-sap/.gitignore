@@ -1,0 +1,4 @@
+.env.*
+bench/corpus/
+bench/results/
+__pycache__/
