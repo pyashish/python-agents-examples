@@ -1,0 +1,26 @@
+[project]
+name = "livekit-field-patterns"
+version = "0.1.0"
+description = "A small, runnable map of how customers build phone agents on LiveKit: inbound (Strada pattern) and outbound (Stuut pattern), split into before / during / after the call."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[silero]==1.8.11",
+    "livekit-api>=1.2,<2",
+    "python-dotenv>=1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+pythonpath = ["."]
